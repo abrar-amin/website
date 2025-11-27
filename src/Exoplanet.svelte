@@ -103,10 +103,9 @@
     // Load exoplanet texture
     const textureLoader = new THREE.TextureLoader();
     const planetTexture = textureLoader.load(
-      '/textures/venus4_rgb_cyl_www.jpg', // Place your texture in public/textures/planet-texture.jpg
+      '/textures/venus4_rgb_cyl_www.jpg', 
       undefined,
       undefined,
-      // Fallback to procedural texture on error
       (error) => {
         console.warn('Failed to load texture, using fallback color', error);
       }
