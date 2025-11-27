@@ -1,5 +1,7 @@
+
 <script>
   import Exoplanet from './Exoplanet.svelte'
+  document.title = "Abrar Amin";
 </script>
 
 <div class="stars"></div>
