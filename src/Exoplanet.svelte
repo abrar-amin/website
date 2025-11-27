@@ -12,8 +12,6 @@
 
   // Helper function for tileable/periodic Perlin noise using 4D torus mapping
   function periodicNoise(x, y, wrapX, wrapY) {
-    // Map 2D coordinates to 4D torus for seamless tiling
-    // This ensures edges wrap around smoothly without seams
     const s = (x / wrapX) * 2 * Math.PI;
     const t = (y / wrapY) * 2 * Math.PI;
 
@@ -22,8 +20,6 @@
     const dz = Math.cos(t);
     const dw = Math.sin(t);
 
-    // Sample noise from the 4D torus (using two 2D samples)
-    // Scale the torus to avoid clustering at the center
     const radius = wrapX / (2 * Math.PI);
     return (perlin2D(dx * radius, dy * radius) + perlin2D(dz * radius, dw * radius)) / 2;
   }
