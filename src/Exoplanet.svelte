@@ -78,29 +78,24 @@
   }
 
   onMount(() => {
-    // Setup scene
     scene = new THREE.Scene();
 
-    // Setup camera
     camera = new THREE.PerspectiveCamera(
       75,
       container.clientWidth / container.clientHeight,
       0.1,
       1000
     );
-    camera.position.set(0, 0, 3); // Center camera
-    camera.lookAt(0, 0, 0); // Look at the planet center
+    camera.position.set(0, 0, 3); 
+    camera.lookAt(0, 0, 0); 
 
-    // Setup renderer
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setClearColor(0x000000, 0); // Transparent background
+    renderer.setClearColor(0x000000, 0); 
     container.appendChild(renderer.domElement);
 
-    // Create exoplanet
     const geometry = new THREE.SphereGeometry(1, 64, 64);
 
-    // Load exoplanet texture
     const textureLoader = new THREE.TextureLoader();
     const planetTexture = textureLoader.load(
       '/textures/venus4_rgb_cyl_www.jpg', 
@@ -111,14 +106,13 @@
       }
     );
 
-    // Create material with texture
     const material = new THREE.MeshPhongMaterial({
       map: planetTexture,
       bumpMap: planetTexture,
       bumpScale: 0.05,
       specular: 0x333333,
       shininess: 0.5,
-      emissive: 0x220800, // No emissive glow
+      emissive: 0x220800, 
     });
 
     planet = new THREE.Mesh(geometry, material);
@@ -157,7 +151,7 @@
       });
 
       const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
-      clouds.rotation.y = Math.random() * Math.PI * 2; // Random initial rotation
+      clouds.rotation.y = Math.random() * Math.PI * 2; 
       clouds.userData = {
         speed: config.speed,
         geometry: cloudGeometry,
