@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cornell Course Search</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px 10px 0 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .chat-container {
+            background: white;
+            height: 500px;
+            overflow-y: auto;
+            padding: 20px;
+            border-left: 1px solid #e0e0e0;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-user {
+            text-align: right;
+        }
+
+        .message-assistant {
+            text-align: left;
+        }
+
+        .message-bubble {
+            display: inline-block;
+            padding: 12px 18px;
+            border-radius: 18px;
+            max-width: 80%;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message-user .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message-assistant .message-bubble {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .message-label {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .input-container {
+            background: white;
+            padding: 20px;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .send-btn {
+            background: #667eea;
+            color: white;
+        }
+
+        .send-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .clear-btn {
+            background: #f0f0f0;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .clear-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .examples {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .examples h3 {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .example-query {
+            display: inline-block;
+            margin: 5px;
+            padding: 6px 12px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 15px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-query:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 Cornell Course Search</h1>
+            <p class="subtitle">Ask questions about courses, schedules, and degree requirements</p>
+
+            <div class="examples">
+                <h3>Example queries:</h3>
+                <span class="example-query" onclick="fillQuery(this)">CS classes on MWF at 1pm</span>
+                <span class="example-query" onclick="fillQuery(this)">ETM-AS classes on Tuesday and Thursday</span>
+                <span class="example-query" onclick="fillQuery(this)">What are the CS BA degree requirements?</span>
+                <span class="example-query" onclick="fillQuery(this)">Plan a freshman CS schedule</span>
+                <span class="example-query" onclick="fillQuery(this)">Open courses about machine learning</span>
+            </div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            
+        </div>
+
+        <div class="input-container">
+            <div class="input-row">
+                <input
+                    type="text"
+                    id="queryInput"
+                    placeholder="Ask about courses, schedules, or requirements..."
+                    onkeypress="handleKeyPress(event)"
+                >
+                <button class="send-btn" id="sendBtn" onclick="sendQuery()">Send</button>
+            </div>
+            <button class="clear-btn" onclick="clearConversation()">Clear Conversation</button>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = Math.random().toString(36).substring(7);
+        let isLoading = false;
+
+        function fillQuery(element) {
+            document.getElementById('queryInput').value = element.textContent;
+            document.getElementById('queryInput').focus();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendQuery();
+            }
+        }
+
+        async function sendQuery() {
+            if (isLoading) return;
+
+            const input = document.getElementById('queryInput');
+            const query = input.value.trim();
+
+            if (!query) return;
+
+            // Add user message to chat
+            addMessage('user', query);
+            input.value = '';
+
+            // Show loading
+            isLoading = true;
+            document.getElementById('sendBtn').disabled = true;
+            const loadingId = addMessage('assistant', 'Searching courses', true);
+
+            try {
+                const response = await fetch('http://34.172.84.37:5000/api/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        session_id: sessionId
+                    })
+                });
+
+                const data = await response.json();
+
+                // Remove loading message
+                document.getElementById(loadingId).remove();
+
+                if (response.ok) {
+                    addMessage('assistant', data.response);
+                } else {
+                    addMessage('assistant', `Error: ${data.error}`, false, true);
+                }
+            } catch (error) {
+                document.getElementById(loadingId).remove();
+                addMessage('assistant', `Error: ${error.message}`, false, true);
+            } finally {
+                isLoading = false;
+                document.getElementById('sendBtn').disabled = false;
+            }
+        }
+
+        function addMessage(role, content, isLoading = false, isError = false) {
+            const container = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            const messageId = 'msg-' + Date.now();
+            messageDiv.id = messageId;
+            messageDiv.className = `message message-${role}`;
+
+            const label = role === 'user' ? 'You' : 'Assistant';
+            const bubbleClass = isError ? 'error' : 'message-bubble';
+            const loadingClass = isLoading ? 'loading' : '';
+
+            messageDiv.innerHTML = `
+                <div class="message-label">${label}</div>
+                <div class="${bubbleClass} ${loadingClass}">${content}</div>
+            `;
+
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+
+            return messageId;
+        }
+
+        async function clearConversation() {
+            try {
+                await fetch('http://34.172.84.37:5000/api/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId
+                    })
+                });
+
+                const container = document.getElementById('chatContainer');
+                container.innerHTML = `
+                    <div class="message message-assistant">
+                        <div class="message-label">Assistant</div>
+                        <div class="message-bubble">
+                            Conversation cleared! What would you like to know?
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error clearing conversation:', error);
+            }
+        }
+    </script>
+</body>
+</html>
