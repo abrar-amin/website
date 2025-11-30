@@ -280,7 +280,7 @@
             const loadingId = addMessage('assistant', 'Searching courses', true);
 
             try {
-                const response = await fetch('http://34.172.84.37:5000/api/search', {
+                const response = await fetch('/api/search', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -334,7 +334,7 @@
 
         async function clearConversation() {
             try {
-                await fetch('http://34.172.84.37:5000/api/clear', {
+                await fetch('/api/clear', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
