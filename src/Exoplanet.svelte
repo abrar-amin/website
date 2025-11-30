@@ -82,7 +82,15 @@
       0.1,
       1000
     );
-    camera.position.set(0, 0, 3); 
+    // Calculate initial camera position based on container width
+    const calculateCameraZ = () => {
+      const width = container.clientWidth;
+      // Base distance is 3, increases as width decreases
+      // At 1200px+ width: z=3, at 600px: z=4, at 300px: z=5
+      return 3 + Math.max(0, (1200 - width) / 600);
+    };
+
+    camera.position.set(0, 0, calculateCameraZ());
     camera.lookAt(0, 0, 0); 
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -205,6 +213,11 @@
       camera.aspect = container.clientWidth / container.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(container.clientWidth, container.clientHeight);
+
+      // Adjust camera distance based on width
+      const width = container.clientWidth;
+      const newZ = 3 + Math.max(0, (1200 - width) / 600);
+      camera.position.z = newZ;
     }
     window.addEventListener('resize', handleResize);
 

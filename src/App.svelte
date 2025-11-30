@@ -170,16 +170,13 @@
   }
 
   @media (max-width: 768px) {
-    .container {
-      flex-direction: column-reverse;
-    }
-
-    .left-panel {
-      height: 50vh;
-    }
-
     .right-panel {
       padding: 2rem;
+    }
+
+    header {
+      margin-top: 0;
+      margin-bottom: 1.5rem;
     }
 
     h1 {
