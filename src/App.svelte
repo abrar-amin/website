@@ -171,7 +171,7 @@
 
   @media (max-width: 768px) {
     .container {
-      flex-direction: column;
+      flex-direction: column-reverse;
     }
 
     .left-panel {
