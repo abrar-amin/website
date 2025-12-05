@@ -18,7 +18,7 @@
 
     <main>
       <p>
-        Hi my name's Abrar, and I am a CS major interested in a ton of different things including software engineering, astronomy, learning languages, and the anything in between!
+        Hi my name's Abrar, and I am a CS major interested in a ton of different things including software engineering, astronomy, learning languages, and anything in between!
       </p>
     </main>
   </div>
