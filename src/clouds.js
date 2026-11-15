@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 
-// Neptune's high-altitude methane clouds: sparse, bright white streaks stretched
-// east-west by the planet's zonal winds.
+// Neptune's high-altitude methane clouds: bright white streaks stretched east-west by the
+// planet's zonal winds. Coverage is set to an active period like the 2000s-2010s (Keck/Hubble),
+// when bright clouds were common at southern mid-latitudes (~20-50 S) and around 20-40 N;
+// they have been much rarer since 2019.
 //
 // Winds use the standard fit to Voyager 2 cloud tracking (Sromovsky et al. 1993):
 //   u(lat) = -398 + 0.188 lat^2 - 1.2e-5 lat^4   [m/s, lat in degrees]
@@ -105,13 +107,13 @@ const fragmentShader = /* glsl */ `
     return uTimeScale * u / (RADIUS * max(cos(lat), 0.05)) * fadeAtPole;
   }
 
-  // Where bright clouds tend to form: mid-latitude bands in both hemispheres,
+  // Where bright clouds tend to form: broad mid-latitude bands in both hemispheres,
   // plus a fainter southern high-latitude band.
   float bandMask(float lat) {
     float d = degrees(lat);
-    float north = exp(-pow((d - 30.0) / 10.0, 2.0));
-    float south = exp(-pow((d + 40.0) / 12.0, 2.0));
-    float polar = 0.6 * exp(-pow((d + 68.0) / 5.0, 2.0));
+    float north = exp(-pow((d - 30.0) / 14.0, 2.0));
+    float south = exp(-pow((d + 35.0) / 17.0, 2.0));
+    float polar = 0.7 * exp(-pow((d + 68.0) / 6.0, 2.0));
     return max(max(north, south), polar);
   }
 
@@ -142,7 +144,7 @@ const fragmentShader = /* glsl */ `
 
     float d1 = density(vLocal, f1 * uCycle, floor(cycle));
     float d2 = density(vLocal, f2 * uCycle, floor(cycle + 0.5) + 50.0);
-    float alpha = (smoothstep(0.42, 0.6, d1) * w1 + smoothstep(0.42, 0.6, d2) * w2) * uOpacity;
+    float alpha = (smoothstep(0.36, 0.56, d1) * w1 + smoothstep(0.36, 0.56, d2) * w2) * uOpacity;
 
     float sunAngle = dot(normalize(vWorldNormal), uSunDir);
     float light = 0.12 + 0.95 * smoothstep(-0.1, 1.0, sunAngle);

@@ -1,6 +1,7 @@
 
 <script>
   import Exoplanet from './Exoplanet.svelte'
+  import TransitCurve from './TransitCurve.svelte'
   document.title = "Abrar Amin";
 </script>
 
@@ -19,7 +20,12 @@
   </div>
 
   <section class="hero">
-    <Exoplanet />
+    <div class="planet">
+      <Exoplanet />
+    </div>
+    <div class="transit">
+      <TransitCurve />
+    </div>
   </section>
 </div>
 
@@ -122,8 +128,21 @@
   /* Planet section below the text; part of the normal page flow */
   .hero {
     position: relative;
+  }
+
+  .planet {
     height: 75vh;
     overflow: hidden;
+  }
+
+  /* Light curve sits in the empty right half, beside the planet */
+  .transit {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    font-size: 14px;
   }
 
   .content {
@@ -261,8 +280,17 @@
   }
 
   @media (max-width: 768px) {
-    .hero {
+    .planet {
       height: 55vh;
+    }
+
+    /* Phones: planet is centered, so the curve goes underneath it.
+       60 braille cells wide, each ~0.6em. */
+    .transit {
+      position: static;
+      transform: none;
+      padding: 1rem 1.5rem 3rem;
+      font-size: min(14px, calc((100vw - 3rem) / 60 / 0.6));
     }
 
     .content {
