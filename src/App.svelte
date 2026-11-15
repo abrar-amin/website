@@ -131,6 +131,7 @@
   }
 
   .planet {
+    position: relative;
     height: 75vh;
     overflow: hidden;
   }

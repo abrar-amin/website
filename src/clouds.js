@@ -15,30 +15,8 @@ import * as THREE from 'three';
 
 const NEPTUNE_RADIUS_M = 24_764_000;
 
-const vertexShader = /* glsl */ `
-  varying vec3 vLocal;
-  varying vec3 vWorldNormal;
-
-  void main() {
-    vLocal = normalize(position);
-    vWorldNormal = normalize(mat3(modelMatrix) * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const fragmentShader = /* glsl */ `
-  uniform float uTime;       // real seconds
-  uniform float uTimeScale;  // simulated seconds per real second
-  uniform float uCycle;      // real seconds each advected sample lives before being recycled
-  uniform vec3 uSunDir;      // world space, normalized
-  uniform float uOpacity;
-
-  varying vec3 vLocal;
-  varying vec3 vWorldNormal;
-
-  const float PI = 3.14159265;
-  const float RADIUS = ${NEPTUNE_RADIUS_M.toFixed(1)};
-
+// Shared GLSL: 3D simplex noise and a 5-octave fractal sum, also used for the Sun's prominences.
+export const NOISE_GLSL = /* glsl */ `
   // 3D simplex noise by Ian McEwan & Stefan Gustavson (Ashima Arts), MIT License.
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -98,7 +76,33 @@ const fragmentShader = /* glsl */ `
     }
     return sum * 0.5 + 0.5;
   }
+`;
 
+const vertexShader = /* glsl */ `
+  varying vec3 vLocal;
+  varying vec3 vWorldNormal;
+
+  void main() {
+    vLocal = normalize(position);
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const fragmentShader = /* glsl */ `
+  uniform float uTime;       // real seconds
+  uniform float uTimeScale;  // simulated seconds per real second
+  uniform float uCycle;      // real seconds each advected sample lives before being recycled
+  uniform vec3 uSunDir;      // world space, normalized
+  uniform float uOpacity;
+
+  varying vec3 vLocal;
+  varying vec3 vWorldNormal;
+
+  const float PI = 3.14159265;
+  const float RADIUS = ${NEPTUNE_RADIUS_M.toFixed(1)};
+
+  ${NOISE_GLSL}
   // Angular speed (rad per real second, + = prograde/eastward) from the Voyager wind profile.
   float angularSpeed(float lat) {
     float d = degrees(lat);

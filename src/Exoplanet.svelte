@@ -1,9 +1,10 @@
 <script>
   import { onMount } from 'svelte';
   import * as THREE from 'three';
-  import { createCloudMaterial } from './clouds.js';
+  import { createCloudMaterial, NOISE_GLSL } from './clouds.js';
   import { ROTATION_PERIOD_S, TIME_SCALE } from './timescale.js';
   import { SPEED_RSUN_PER_S, hoursNow } from './transit.js';
+  import { EFFECTS, createEffectMaterial } from './effects.js';
 
   /** @type {HTMLDivElement} */
   let container;
@@ -11,6 +12,10 @@
   let world; // group holding Neptune and the Sun, rotated by dragging
   let isDragging = false;
   let lastMouse = { x: 0, y: 0 };
+
+  // Post-process look: starts at ?fx=name, advances every 40 s, arrow keys step (temporary, for comparing)
+  const fxParam = new URLSearchParams(location.search).get('fx');
+  let fxIndex = Math.max(0, EFFECTS.findIndex((e) => e.name === fxParam));
 
   // Neptune
   const OBLIQUITY = THREE.MathUtils.degToRad(28.32); // axial tilt relative to its orbit
@@ -31,13 +36,72 @@
   // It is drawn at 8% so it reads clearly. Its night side faces Neptune, so it is black.
   const EARTH_RADIUS = 0.08 * SUN_RADIUS;
 
-  // Solar limb darkening at 550 nm, same coefficients as the transit curve (see transit.js)
-  const LIMB_U1 = 0.47;
-  const LIMB_U2 = 0.23;
+  // Solar limb darkening per colour channel, quadratic law I(mu) = 1 - u1(1 - mu) - u2(1 - mu)^2.
+  // Converted from Allen's Astrophysical Quantities (Cox 2000) at 600, 550 and 450 nm for R, G, B.
+  // Blue darkens more toward the edge than red, so the limb turns slightly warmer, as in real photos.
+  // (550 nm matches the transit curve in transit.js.)
+  const LIMB_U1 = new THREE.Vector3(0.42, 0.47, 0.65);
+  const LIMB_U2 = new THREE.Vector3(0.23, 0.23, 0.17);
+  // Disk-centre colour: the Sun's 5772 K effective temperature as sRGB, near white
+  const SUN_COLOR = new THREE.Color().setRGB(1.0, 0.957, 0.918, THREE.SRGBColorSpace); // stored as linear
+  // At this size the real Sun's granulation (~1,000 km cells) is far too fine to resolve,
+  // so the texture is used only as faint brightness variation, with its colour discarded.
+  const SUN_DETAIL_CONTRAST = 0.12;
+
+  // Sidereal rotation of the Sun's equator (25.4 days), at the page's speed-up
+  const SUN_ROTATION_S = 25.38 * 86400;
+
+  // Prominences and the chromosphere at the Sun's edge, in hydrogen-alpha red (656 nm), the way
+  // filtered solar photos show them. Heights follow real ones: the chromosphere is a thin rim
+  // (~0.01 solar radii here, a little thicker than its true ~0.005 so it shows), most prominences
+  // reach ~0.07 (50,000 km) and large ones ~0.25. They evolve over hours, so at the page's speed-up
+  // they visibly change over seconds.
+  const PROMINENCE_EXTENT = 1.35; // billboard half-size, in solar radii
+
+  const prominenceVertexShader = /* glsl */ `
+    varying vec2 vPos;
+    void main() {
+      vPos = position.xy * ${PROMINENCE_EXTENT.toFixed(2)};
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+  const prominenceFragmentShader = /* glsl */ `
+    uniform float uHours; // simulated hours
+    uniform float uLimb;  // the sphere's outline as seen from the camera, in solar radii (just over 1)
+    varying vec2 vPos;    // position on the billboard, in solar radii from the centre
+
+    ${NOISE_GLSL}
+
+    void main() {
+      float r = length(vPos);
+      if (r < uLimb) discard; // the Sun's own disk
+      float h = r - uLimb;     // height above the limb
+      vec2 around = vPos / r; // direction around the limb, as a point on a circle (no seam)
+
+      // Where along the limb prominences stand: a few broad active stretches that drift slowly
+      float activity = smoothstep(0.25, 0.6, snoise(vec3(around * 2.2, uHours * 0.01)));
+      // Their structure: thin vertical threads that rise and churn
+      float threads = fbm(vec3(around * 22.0, h * 9.0 - uHours * 0.25));
+      float clumps = fbm(vec3(around * 6.0, h * 4.0 + uHours * 0.05) + 9.0);
+      float tall = mix(0.05, 0.25, clumps); // height scale, in solar radii
+      float density = activity * threads * mix(0.6, 1.3, clumps) * exp(-h / tall);
+      float prominence = smoothstep(0.2, 0.28, density);
+
+      // Chromosphere: a thin, slightly ragged rim of spicules all the way around
+      float spicules = fbm(vec3(around * 90.0, uHours * 0.3));
+      float chromosphere = 1.0 - smoothstep(0.004, 0.006 + 0.008 * spicules, h);
+
+      float alpha = max(prominence, chromosphere);
+      if (alpha <= 0.0) discard;
+      gl_FragColor = vec4(1.0, 0.29, 0.18, alpha);
+    }
+  `;
 
   const sunVertexShader = /* glsl */ `
     varying float vMu;
+    varying vec2 vUv;
     void main() {
+      vUv = uv;
       vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
       // mu = cosine of the angle between the surface normal and the line of sight
       vMu = max(dot(normalize(normalMatrix * normal), normalize(-viewPosition.xyz)), 0.0);
@@ -45,16 +109,26 @@
     }
   `;
   const sunFragmentShader = /* glsl */ `
-    uniform float uU1;
-    uniform float uU2;
+    uniform vec3 uU1;
+    uniform vec3 uU2;
+    uniform vec3 uColor;     // linear
+    uniform float uContrast;
+    uniform sampler2D uMap;
     varying float vMu;
+    varying vec2 vUv;
+
     void main() {
+      // Faint surface detail (luminance() is supplied by three.js's shader prefix): the map's brightness relative to its own average (its smallest mip level)
+      float detail = luminance(texture2D(uMap, vUv).rgb) / max(luminance(textureLod(uMap, vUv, 20.0).rgb), 1e-3);
+      detail = 1.0 + uContrast * (detail - 1.0);
+      // Limb darkening per channel, in linear light
       float edge = 1.0 - vMu;
-      float intensity = 1.0 - uU1 * edge - uU2 * edge * edge;
-      // Colour of a ~5800 K blackbody in sRGB
-      gl_FragColor = vec4(vec3(1.0, 0.95, 0.89) * intensity, 1.0);
+      vec3 intensity = 1.0 - uU1 * edge - uU2 * edge * edge;
+      gl_FragColor = vec4(uColor * intensity * detail, 1.0);
+      #include <colorspace_fragment>
     }
   `;
+
 
   const FOV = 75;
   const ELEVATION = THREE.MathUtils.degToRad(15); // camera height above Neptune's orbital plane
@@ -83,8 +157,19 @@
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(FOV, width / height, 0.1, 1000);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setSize(width, height);
+
+    // The scene renders off-screen (linear, high precision, antialiased), then a post-process pass draws it
+    const sceneTarget = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType, samples: 4 });
+    const resolution = new THREE.Vector2(width, height);
+    const effectMaterials = EFFECTS.map((effect) => createEffectMaterial(effect, sceneTarget.texture, resolution));
+    const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), effectMaterials[0]);
+    postQuad.frustumCulled = false;
+    const postScene = new THREE.Scene();
+    postScene.add(postQuad);
+    const postCamera = new THREE.Camera();
+
     container.appendChild(renderer.domElement);
 
     // world (dragged by the user) > Sun, tilt (spin axis, fixed in space) > body (spins once per Neptune day)
@@ -129,15 +214,37 @@
     body.add(new THREE.Mesh(new THREE.SphereGeometry(1.004, 96, 96), cloudMaterial));
 
     // The Sun, and the sunlight it casts (parallel rays, as they nearly are at Neptune's real distance)
+    // Sun texture: Solar System Scope, CC BY 4.0, solarsystemscope.com/textures
+    const sunTexture = new THREE.TextureLoader().load('/textures/Solarsystemscope_texture_2k_sun.jpg');
+    sunTexture.colorSpace = THREE.SRGBColorSpace;
     const sun = new THREE.Mesh(
       new THREE.SphereGeometry(SUN_RADIUS, 64, 64),
       new THREE.ShaderMaterial({
         vertexShader: sunVertexShader,
         fragmentShader: sunFragmentShader,
-        uniforms: { uU1: { value: LIMB_U1 }, uU2: { value: LIMB_U2 } },
+        uniforms: {
+          uU1: { value: LIMB_U1 },
+          uU2: { value: LIMB_U2 },
+          uColor: { value: SUN_COLOR },
+          uContrast: { value: SUN_DETAIL_CONTRAST },
+          uMap: { value: sunTexture },
+        },
       })
     );
     group.add(sun);
+
+    // Prominence billboard: always faces the camera, centred on the Sun, drawn outside its disk.
+    // Lives in the scene (not the dragged world) so it can copy the camera's orientation directly.
+    const prominenceMaterial = new THREE.ShaderMaterial({
+      vertexShader: prominenceVertexShader,
+      fragmentShader: prominenceFragmentShader,
+      uniforms: { uHours: { value: 0 }, uLimb: { value: 1 } },
+      transparent: true,
+      depthWrite: false,
+    });
+    const prominences = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), prominenceMaterial);
+    prominences.scale.setScalar(SUN_RADIUS * PROMINENCE_EXTENT);
+    scene.add(prominences);
 
     // Earth crossing the Sun's face, on the same clock as the light curve
     const earth = new THREE.Mesh(
@@ -184,10 +291,23 @@
         .addScaledVector(across, x * SUN_RADIUS)
         .addScaledVector(towardNeptune, depth * SUN_RADIUS + EARTH_RADIUS * 1.1);
       body.rotation.y = ((t * TIME_SCALE) / ROTATION_PERIOD_S) * Math.PI * 2;
+      sun.rotation.y = ((t * TIME_SCALE) / SUN_ROTATION_S) * Math.PI * 2;
       // Cloud shading needs the world-space direction to the Sun, which changes over the year and as the view is dragged
       group.updateMatrixWorld();
-      cloudMaterial.uniforms.uSunDir.value.copy(sun.getWorldPosition(sunWorld).normalize());
+      sun.getWorldPosition(sunWorld);
+      prominences.position.copy(sunWorld);
+      prominences.quaternion.copy(camera.quaternion);
+      // A sphere seen from distance d looks R d / sqrt(d^2 - R^2) wide in the plane through its centre
+      const d = camera.position.distanceTo(sunWorld) / SUN_RADIUS;
+      prominenceMaterial.uniforms.uLimb.value = d / Math.sqrt(d * d - 1);
+      prominenceMaterial.uniforms.uHours.value = (t * TIME_SCALE) / 3600;
+      cloudMaterial.uniforms.uSunDir.value.copy(sunWorld).normalize();
+      renderer.setRenderTarget(sceneTarget);
       renderer.render(scene, camera);
+      renderer.setRenderTarget(null);
+      postQuad.material = effectMaterials[fxIndex];
+      renderer.domElement.style.imageRendering = EFFECTS[fxIndex].pixelated ? 'pixelated' : 'auto';
+      renderer.render(postScene, postCamera);
     }
 
     function handleResize() {
@@ -200,6 +320,9 @@
       camera.setViewOffset(w, h, (0.5 - planetX(w)) * w, 0, w, h);
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      const buffer = renderer.getDrawingBufferSize(new THREE.Vector2());
+      sceneTarget.setSize(buffer.x, buffer.y);
+      resolution.copy(buffer);
     }
     handleResize();
     animate();
@@ -217,6 +340,13 @@
         }
       });
       planetTexture.dispose();
+      sunTexture.dispose();
+      sceneTarget.dispose();
+      postQuad.geometry.dispose();
+      effectMaterials.forEach((m) => {
+        Object.values(m.uniforms).forEach((u) => u.value instanceof THREE.Texture && u.value !== sceneTarget.texture && u.value.dispose());
+        m.dispose();
+      });
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -239,7 +369,37 @@
   function handleMouseUp() {
     isDragging = false;
   }
+
+  /** @param {number} step */
+  function stepFx(step) {
+    fxIndex = (fxIndex + step + EFFECTS.length) % EFFECTS.length;
+    const url = new URL(location.href);
+    url.searchParams.set('fx', EFFECTS[fxIndex].name);
+    history.replaceState(null, '', url);
+  }
+
+  // Advance to the next look on its own; a key press restarts the countdown
+  const FX_CYCLE_MS = 40_000;
+  /** @type {ReturnType<typeof setInterval>} */
+  let fxTimer;
+  const startFxTimer = () => {
+    clearInterval(fxTimer);
+    fxTimer = setInterval(() => stepFx(1), FX_CYCLE_MS);
+  };
+  onMount(() => {
+    startFxTimer();
+    return () => clearInterval(fxTimer);
+  });
+
+  /** @param {KeyboardEvent} e */
+  function handleKey(e) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    stepFx(e.key === 'ArrowRight' ? 1 : -1);
+    startFxTimer();
+  }
 </script>
+
+<svelte:window on:keydown={handleKey} />
 
 <div
   class="exoplanet-container"
@@ -252,6 +412,7 @@
   aria-label="Interactive 3D view of Neptune, with the Sun as it appears from Neptune"
   tabindex="0"
 ></div>
+<div class="fx-label">fx {fxIndex + 1}/{EFFECTS.length} {EFFECTS[fxIndex].name}  [← →]</div>
 
 <style>
   .exoplanet-container {
@@ -259,6 +420,16 @@
     height: 100%;
     cursor: grab;
     background: #000;
+  }
+
+  .fx-label {
+    position: absolute;
+    left: 1rem;
+    bottom: 0.75rem;
+    font-size: 12px;
+    color: #7f8a99;
+    white-space: pre;
+    pointer-events: none;
   }
 
   .exoplanet-container:active {
