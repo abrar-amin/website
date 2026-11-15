@@ -3,6 +3,7 @@
   import * as THREE from 'three';
   import { createCloudMaterial } from './clouds.js';
   import { ROTATION_PERIOD_S, TIME_SCALE } from './timescale.js';
+  import { SPEED_RSUN_PER_S, hoursNow } from './transit.js';
 
   /** @type {HTMLDivElement} */
   let container;
@@ -20,12 +21,40 @@
 
   // Speed-up for the orbit: a real one is 164.79 years. The spin and winds keep the page's
   // one-Neptune-day-per-minute pace; the orbit runs on its own, much faster clock.
-  const SCREEN_SECONDS_PER_ORBIT = 240;
+  const SCREEN_SECONDS_PER_ORBIT = 60;
 
-  // The Sun as seen from Neptune: 30.07 AU away it spans about 1 arcminute, well under a pixel here,
-  // so it is drawn as a fixed-size point of sunlight colour (a ~5800 K blackbody) rather than a disc.
-  const SUN_DISTANCE = 400; // far enough to behave like a point at infinity
-  const SUN_POINT_PX = 3;
+  // Not to scale: from 30.07 AU the real Sun spans about 1 arcminute, well under a pixel here.
+  // It is drawn much bigger and closer (about 17 degrees across) so its disk is visible.
+  const SUN_DISTANCE = 10; // in Neptune radii
+  const SUN_RADIUS = 1.5;
+  // Not to scale: seen from Neptune, Earth is 0.95% of the Sun's radius, under a pixel here.
+  // It is drawn at 8% so it reads clearly. Its night side faces Neptune, so it is black.
+  const EARTH_RADIUS = 0.08 * SUN_RADIUS;
+
+  // Solar limb darkening at 550 nm, same coefficients as the transit curve (see transit.js)
+  const LIMB_U1 = 0.47;
+  const LIMB_U2 = 0.23;
+
+  const sunVertexShader = /* glsl */ `
+    varying float vMu;
+    void main() {
+      vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
+      // mu = cosine of the angle between the surface normal and the line of sight
+      vMu = max(dot(normalize(normalMatrix * normal), normalize(-viewPosition.xyz)), 0.0);
+      gl_Position = projectionMatrix * viewPosition;
+    }
+  `;
+  const sunFragmentShader = /* glsl */ `
+    uniform float uU1;
+    uniform float uU2;
+    varying float vMu;
+    void main() {
+      float edge = 1.0 - vMu;
+      float intensity = 1.0 - uU1 * edge - uU2 * edge * edge;
+      // Colour of a ~5800 K blackbody in sRGB
+      gl_FragColor = vec4(vec3(1.0, 0.95, 0.89) * intensity, 1.0);
+    }
+  `;
 
   const FOV = 75;
   const ELEVATION = THREE.MathUtils.degToRad(15); // camera height above Neptune's orbital plane
@@ -89,17 +118,35 @@
     // Methane clouds carried by Neptune's measured zonal winds (see clouds.js)
     const startYear = 1970 + Date.now() / 1000 / SECONDS_PER_YEAR; // start from where the Sun really is in Neptune's sky today
     const toSun = sunDirection(startYear);
+
+    // Start with the view turned so the Sun is on screen, just to the right of Neptune:
+    // 40 degrees off the line straight behind the planet, far enough to clear its disk.
+    // The camera sits on +z looking toward -z; turning the world about y moves the Sun's azimuth.
+    const START_SUN_OFFSET = THREE.MathUtils.degToRad(40);
+    const azimuth = (/** @type {THREE.Vector3} */ v) => Math.atan2(v.x, v.z);
+    group.rotation.y = Math.PI - START_SUN_OFFSET - azimuth(toSun);
     const cloudMaterial = createCloudMaterial(toSun, TIME_SCALE);
     body.add(new THREE.Mesh(new THREE.SphereGeometry(1.004, 96, 96), cloudMaterial));
 
-    // The Sun, and the sunlight it casts (parallel rays, since it is effectively at infinity)
-    const sunGeometry = new THREE.BufferGeometry();
-    sunGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
-    const sun = new THREE.Points(
-      sunGeometry,
-      new THREE.PointsMaterial({ color: 0xfff2e3, size: SUN_POINT_PX, sizeAttenuation: false })
+    // The Sun, and the sunlight it casts (parallel rays, as they nearly are at Neptune's real distance)
+    const sun = new THREE.Mesh(
+      new THREE.SphereGeometry(SUN_RADIUS, 64, 64),
+      new THREE.ShaderMaterial({
+        vertexShader: sunVertexShader,
+        fragmentShader: sunFragmentShader,
+        uniforms: { uU1: { value: LIMB_U1 }, uU2: { value: LIMB_U2 } },
+      })
     );
     group.add(sun);
+
+    // Earth crossing the Sun's face, on the same clock as the light curve
+    const earth = new THREE.Mesh(
+      new THREE.SphereGeometry(EARTH_RADIUS, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
+    );
+    group.add(earth);
+    const towardNeptune = new THREE.Vector3();
+    const across = new THREE.Vector3();
     const sunlight = new THREE.DirectionalLight(0xffffff, 2.5);
     sun.add(sunlight);
 
@@ -125,7 +172,17 @@
       const t = clock.getElapsedTime();
       cloudMaterial.uniforms.uTime.value = t;
       const year = startYear + (t / SCREEN_SECONDS_PER_ORBIT) * ORBITAL_PERIOD_YEARS;
-      sun.position.copy(sunDirection(year)).multiplyScalar(SUN_DISTANCE);
+      const toSunNow = sunDirection(year);
+      sun.position.copy(toSunNow).multiplyScalar(SUN_DISTANCE);
+      // Earth sits just above the point of the Sun's surface it covers, as seen from Neptune.
+      // It moves across the disk in the direction of its orbit (prograde), through the center (b = 0).
+      const x = hoursNow() * 3600 * SPEED_RSUN_PER_S; // solar radii from the disk's center
+      towardNeptune.copy(toSunNow).negate();
+      across.set(-toSunNow.z, 0, toSunNow.x); // Earth's orbital direction at inferior conjunction
+      const depth = Math.abs(x) < 1 ? Math.sqrt(1 - x * x) : 0.05; // off the disk it is black on black
+      earth.position.copy(sun.position)
+        .addScaledVector(across, x * SUN_RADIUS)
+        .addScaledVector(towardNeptune, depth * SUN_RADIUS + EARTH_RADIUS * 1.1);
       body.rotation.y = ((t * TIME_SCALE) / ROTATION_PERIOD_S) * Math.PI * 2;
       // Cloud shading needs the world-space direction to the Sun, which changes over the year and as the view is dragged
       group.updateMatrixWorld();

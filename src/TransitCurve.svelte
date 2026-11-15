@@ -1,15 +1,14 @@
 <script>
   import { onMount } from 'svelte';
-  import { flux } from './transit.js';
-  import { TIME_SCALE } from './timescale.js';
+  import { flux, WINDOW_HOURS, windowPhase } from './transit.js';
 
   // Plot window and resolution. Each braille character is a 2x4 grid of dots.
-  const HOURS = 45; // shown on each side of mid-transit
+  const HOURS = WINDOW_HOURS; // shown on each side of mid-transit
   const COLS = 60;
   const ROWS = 7;
   const DOTS_X = COLS * 2;
   const DOTS_Y = ROWS * 4;
-  const DEPTH_MAX_PPM = 1650; // bottom of the plot
+  const DEPTH_MAX_PPM = 120; // bottom of the plot
   const BLANK = 0x2800; // empty braille cell; used instead of spaces so every cell has the same width
   const DOT_BITS = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]]; // [row][col]
 
@@ -29,30 +28,61 @@
   const rows = cells.map((row) => row.map((bits) => String.fromCharCode(BLANK + bits)).join(''));
 
   // Axis labels are placed by percentage so they line up whatever font draws the braille.
-  const ticks = [-40, -20, 0, 20, 40].map((h) => ({
+  const ticks = [-8, -4, 0, 4, 8].map((h) => ({
     text: h > 0 ? `+${h}h` : `${h}h`,
     left: ((h + HOURS) / (2 * HOURS)) * 100,
   }));
 
-  // The traced part brightens as time sweeps across, at the same speed-up as the planet's spin.
-  const SWEEP_S = (2 * HOURS * 3600) / TIME_SCALE;
+  // 9x9 pixel Earth: ocean, land, and polar ice, in flat colours
+  const EARTH_SPRITE = [
+    '...www...',
+    '..oogoo..',
+    '.ogggooo.',
+    'oogggooog',
+    'oooggoogg',
+    'ooooooggo',
+    '.oooooog.',
+    '..ooooo..',
+    '...www...',
+  ];
+  const EARTH_COLORS = { o: '#2b5cab', g: '#4c8b3f', w: '#f2f2f2' };
+  const earthPixels = EARTH_SPRITE.flatMap((line, y) =>
+    [...line].flatMap((ch, x) => (ch in EARTH_COLORS ? [{ x, y, fill: EARTH_COLORS[/** @type {'o' | 'g' | 'w'} */ (ch)] }] : []))
+  );
+
+  // A pixel Earth rides along the curve at the current moment, on the clock shared with the 3D scene;
+  // the part of the curve already traced is brighter. Without motion, Earth sits at mid-transit.
+  let phase = 0.5;
   let cursor = COLS;
 
   onMount(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const start = performance.now();
-    const id = setInterval(() => {
-      const phase = (((performance.now() - start) / 1000) % SWEEP_S) / SWEEP_S;
+    /** @type {number} */
+    let frameId;
+    function tick() {
+      frameId = requestAnimationFrame(tick);
+      phase = windowPhase();
       cursor = Math.round(phase * COLS);
-    }, 500);
-    return () => clearInterval(id);
+    }
+    tick();
+    return () => cancelAnimationFrame(frameId);
   });
+
+  // Placed by percentage, like the axis labels, so it lines up whatever font draws the braille.
+  $: earthLeft = phase * 100;
+  $: earthTop = ((dipPpm(-HOURS + 2 * HOURS * phase) / DEPTH_MAX_PPM) * (DOTS_Y - 1) + 0.5) / DOTS_Y * 100;
 </script>
 
-<figure aria-label="Light curve of Neptune passing in front of the Sun, seen edge-on: the Sun dims by up to 1574 parts per million over 74 hours">
+<figure aria-label="Light curve of Earth passing in front of the Sun, seen from Neptune: the Sun dims by up to 111 parts per million over 13 hours">
   <div class="plot">
-    <pre aria-hidden="true">{#each rows as row}<span>{row.slice(0, cursor)}</span><span class="dim">{row.slice(cursor)}</span>
+    <div class="curve">
+      <pre aria-hidden="true">{#each rows as row}<span>{row.slice(0, cursor)}</span><span class="dim">{row.slice(cursor)}</span>
 {/each}</pre>
+      <svg class="earth" aria-hidden="true" viewBox="-1 -1 11 11" shape-rendering="crispEdges" style="left: {earthLeft}%; top: {earthTop}%">
+        <rect x="-1" y="-1" width="11" height="11" fill="#000" />
+        {#each earthPixels as p}<rect x={p.x} y={p.y} width="1" height="1" fill={p.fill} />{/each}
+      </svg>
+    </div>
     <div class="axis" aria-hidden="true">
       {#each ticks as tick}<span style="left: {tick.left}%">{tick.text}</span>{/each}
     </div>
@@ -73,6 +103,18 @@
     color: #fff;
     font-family: 'Apple Braille', 'Segoe UI Symbol', 'DejaVu Sans Mono', monospace;
     line-height: 1.2;
+  }
+
+  .curve {
+    position: relative;
+  }
+
+  /* 3 screen pixels per sprite pixel; the black border hides the line right under it */
+  .earth {
+    position: absolute;
+    width: 33px;
+    height: 33px;
+    transform: translate(-50%, -50%);
   }
 
   .dim {
