@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 
-// Procedural cloud deck driven by a simple model of solar heating:
-//  - Zonal winds (super-rotation) whose speed varies with latitude, with jets at mid-latitudes.
-//    The shear between latitudes stretches features into bands and chevrons.
-//  - Slow poleward drift at the cloud tops (Hadley circulation: air heated at the equator rises
-//    and flows toward the poles).
-//  - Convection tied to sunlight: near the subsolar point, heated air churns into puffy cells.
-//    Toward the terminator and night side, clouds relax into smooth wind-sheared streaks.
+// Neptune's high-altitude methane clouds: sparse, bright white streaks stretched
+// east-west by the planet's zonal winds.
+//
+// Winds use the standard fit to Voyager 2 cloud tracking (Sromovsky et al. 1993):
+//   u(lat) = -398 + 0.188 lat^2 - 1.2e-5 lat^4   [m/s, lat in degrees]
+// i.e. ~400 m/s retrograde (westward) at the equator, ~250 m/s prograde near 70 degrees.
+// These are relative to the interior, so the mesh should spin with the planet's body.
 //
 // Advection is done "flow-map" style: two samples, each advected for at most one cycle,
 // crossfaded so the shear never accumulates without bound.
+
+const NEPTUNE_RADIUS_M = 24_764_000;
 
 const vertexShader = /* glsl */ `
   varying vec3 vLocal;
@@ -23,16 +25,17 @@ const vertexShader = /* glsl */ `
 `;
 
 const fragmentShader = /* glsl */ `
-  uniform float uTime;
-  uniform vec3 uSunDir;     // world space, normalized
+  uniform float uTime;       // real seconds
+  uniform float uTimeScale;  // simulated seconds per real second
+  uniform float uCycle;      // real seconds each advected sample lives before being recycled
+  uniform vec3 uSunDir;      // world space, normalized
   uniform float uOpacity;
-  uniform float uWind;      // base zonal angular speed (rad/s)
-  uniform float uCycle;     // seconds each advected sample lives before being recycled
 
   varying vec3 vLocal;
   varying vec3 vWorldNormal;
 
   const float PI = 3.14159265;
+  const float RADIUS = ${NEPTUNE_RADIUS_M.toFixed(1)};
 
   // 3D simplex noise by Ian McEwan & Stefan Gustavson (Ashima Arts), MIT License.
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -94,63 +97,64 @@ const fragmentShader = /* glsl */ `
     return sum * 0.5 + 0.5;
   }
 
-  // Zonal angular speed by latitude: faster jets around +-45 degrees.
-  float zonalSpeed(float lat) {
-    float s = abs(lat) / (0.5 * PI);
-    return uWind * (1.0 + 0.6 * 4.0 * s * (1.0 - s));
+  // Angular speed (rad per real second, + = prograde/eastward) from the Voyager wind profile.
+  float angularSpeed(float lat) {
+    float d = degrees(lat);
+    float u = -398.0 + 0.188 * d * d - 1.2e-5 * d * d * d * d;
+    float fadeAtPole = smoothstep(1.48, 1.3, abs(lat)); // avoid the 1/cos blow-up at the pole
+    return uTimeScale * u / (RADIUS * max(cos(lat), 0.05)) * fadeAtPole;
   }
 
-  // Cloud density at surface point p after being advected for t seconds.
-  float density(vec3 p, float t, float heat, float seed) {
+  // Where bright clouds tend to form: mid-latitude bands in both hemispheres,
+  // plus a fainter southern high-latitude band.
+  float bandMask(float lat) {
+    float d = degrees(lat);
+    float north = exp(-pow((d - 30.0) / 10.0, 2.0));
+    float south = exp(-pow((d + 40.0) / 12.0, 2.0));
+    float polar = 0.6 * exp(-pow((d + 68.0) / 5.0, 2.0));
+    return max(max(north, south), polar);
+  }
+
+  // Cloud density at surface point p after being advected for t real seconds.
+  float density(vec3 p, float t, float seed) {
     float lat = asin(clamp(p.y, -1.0, 1.0));
     float lon = atan(p.z, p.x);
 
-    // Trace back to where this air came from: east-west by the zonal wind,
-    // and from closer to the equator by the poleward Hadley drift.
-    float lon0 = lon - zonalSpeed(lat) * t;
-    float lat0 = lat - 0.006 * t * sin(2.0 * lat);
-    vec3 q = vec3(cos(lat0) * cos(lon0), sin(lat0), cos(lat0) * sin(lon0));
+    // Trace back along the zonal wind. Positive mesh spin decreases atan(z, x),
+    // so eastward (prograde) motion is toward smaller lon.
+    float lon0 = lon + angularSpeed(lat) * t;
+    vec3 q = vec3(cos(lat) * cos(lon0), p.y, cos(lat) * sin(lon0));
 
     vec3 o = vec3(seed * 17.31, seed * 7.13, seed * 3.71);
-    float boil = t * (0.01 + 0.06 * heat);  // hotter air churns faster
-
-    float streaks = fbm(q * vec3(2.0, 9.0, 2.0) + o + boil);   // stretched east-west
-    float cells = fbm(q * 6.0 + o + boil * 2.0);                // convective cells
-    float large = fbm(q * 1.5 + o * 0.5);
-
-    return mix(streaks, cells, smoothstep(0.25, 0.9, heat)) * 0.65 + large * 0.35;
+    float evolve = t * 0.02;
+    // Strongly stretched east-west: thin streaks rather than blobs.
+    float streaks = fbm(q * vec3(3.0, 22.0, 3.0) + o + evolve);
+    float clumps = fbm(q * 4.0 + o * 0.5);
+    return streaks * mix(0.55, 1.0, clumps) * bandMask(lat);
   }
 
   void main() {
-    vec3 n = normalize(vWorldNormal);
-    float sunAngle = dot(n, uSunDir);
-    float heat = clamp(sunAngle, 0.0, 1.0);
-
-    // Two crossfaded samples: each is recycled with a new seed while its weight is zero.
     float cycle = uTime / uCycle;
     float f1 = fract(cycle);
     float f2 = fract(cycle + 0.5);
     float w1 = 1.0 - abs(2.0 * f1 - 1.0);
     float w2 = 1.0 - w1;
 
-    float d1 = density(vLocal, f1 * uCycle, heat, floor(cycle));
-    float d2 = density(vLocal, f2 * uCycle, heat, floor(cycle + 0.5) + 50.0);
+    float d1 = density(vLocal, f1 * uCycle, floor(cycle));
+    float d2 = density(vLocal, f2 * uCycle, floor(cycle + 0.5) + 50.0);
+    float alpha = (smoothstep(0.42, 0.6, d1) * w1 + smoothstep(0.42, 0.6, d2) * w2) * uOpacity;
 
-    // Variance-preserving blend so contrast doesn't dip mid-crossfade.
-    float d = 0.5 + ((d1 - 0.5) * w1 + (d2 - 0.5) * w2) / sqrt(w1 * w1 + w2 * w2);
-
-    float alpha = smoothstep(0.42, 0.72, d) * uOpacity;
-    float light = 0.2 + 0.9 * smoothstep(-0.15, 1.0, sunAngle);
-    vec3 color = vec3(1.0, 0.96, 0.88) * light * mix(0.85, 1.05, d);
-
-    gl_FragColor = vec4(color, alpha);
+    float sunAngle = dot(normalize(vWorldNormal), uSunDir);
+    float light = 0.12 + 0.95 * smoothstep(-0.1, 1.0, sunAngle);
+    gl_FragColor = vec4(vec3(1.0) * light, alpha);
   }
 `;
 
 /**
  * @param {THREE.Vector3} sunDirection world-space direction toward the sun
+ * @param {number} timeScale simulated seconds per real second
  */
-export function createCloudMaterial(sunDirection) {
+export function createCloudMaterial(sunDirection, timeScale) {
   return new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader,
@@ -158,10 +162,10 @@ export function createCloudMaterial(sunDirection) {
     depthWrite: false,
     uniforms: {
       uTime: { value: 0 },
+      uTimeScale: { value: timeScale },
+      uCycle: { value: 20 },
       uSunDir: { value: sunDirection.clone().normalize() },
-      uOpacity: { value: 0.85 },
-      uWind: { value: 0.05 },
-      uCycle: { value: 30 },
+      uOpacity: { value: 0.95 },
     },
   });
 }
