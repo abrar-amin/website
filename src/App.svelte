@@ -6,32 +6,31 @@
 
 <div class="stars"></div>
 
-<div class="container">
-  <div class="left-panel">
-    <Exoplanet />
-  </div>
-
-  <div class="right-panel">
+<div class="page">
+  <div class="content">
     <header>
-      <h1>Abrar Amin</h1>
+      <h2>Abrar Amin</h2>
     </header>
 
     <main>
-      <p>
-        Hi my name's Abrar, and I am a CS major interested in a ton of different things including software engineering, astronomy, learning languages, and anything in between!
-      </p>
+        <p>
+          Hi my name's Abrar, and I am a CS major interested in a ton of different things including software engineering, astronomy, learning languages, and anything in between!
+        </p>
     </main>
   </div>
+
+  <section class="hero">
+    <Exoplanet />
+  </section>
 </div>
 
 <style>
+
   :global(body) {
     margin: 0;
     padding: 0;
-    overflow: hidden;
     display: block !important;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    font-family: 'Geist Mono', ui-monospace, Menlo, monospace;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -40,8 +39,7 @@
     max-width: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
   }
 
   .stars {
@@ -117,44 +115,35 @@
       370px 370px #fff, 470px 570px #fff, 570px 270px #fff;
   }
 
-  .container {
+  .page {
     position: relative;
-    display: flex;
-    width: 100vw;
-    height: 100vh;
     z-index: 1;
   }
 
-  .left-panel {
-    flex: 1;
+  /* Planet section below the text; part of the normal page flow */
+  .hero {
     position: relative;
+    height: 75vh;
     overflow: hidden;
   }
 
-  .right-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 3rem;
+  .content {
+    max-width: 65ch;
+    margin: 0 auto;
+    padding: 3rem 2rem 6rem;
     box-sizing: border-box;
-    background-color: transparent;
   }
 
   header {
-    margin-top: -4rem;
     margin-bottom: 2rem;
+    padding-top: 1rem;
   }
 
   h1 {
     font-size: 4rem;
     font-weight: 700;
     margin: 0;
-    background: linear-gradient(135deg, #fff 0%, #FFB380 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-shadow: 0 4px 20px rgba(255, 179, 128, 0.3);
+    color: #fff;
     letter-spacing: -0.02em;
   }
 
@@ -162,29 +151,152 @@
     width: 100%;
   }
 
+  .category {
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid rgba(255, 179, 128, 0.1);
+  }
+
+  .category:last-child {
+    border-bottom: none;
+  }
+
+  h2 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+    color: #fff;
+    position: relative;
+    display: inline-block;
+  }
+
+
   p {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
+    font-weight: 600;
     line-height: 1.8;
-    color: rgba(255, 255, 255, 0.9);
+    color: #fff;
     margin: 0;
   }
 
+  .project-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .project-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 179, 128, 0.15);
+    border-radius: 12px;
+    padding: 1.25rem;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: block;
+  }
+
+  .project-card:hover {
+    background: rgba(255, 179, 128, 0.08);
+    border-color: rgba(255, 179, 128, 0.3);
+    transform: translateY(-2px);
+  }
+
+  .project-card h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    color: #FFB380;
+  }
+
+  .project-card p {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .skills-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .skill-tag {
+    background: rgba(255, 179, 128, 0.1);
+    border: 1px solid rgba(255, 179, 128, 0.2);
+    color: rgba(255, 255, 255, 0.9);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+  }
+
+  .skill-tag:hover {
+    background: rgba(255, 179, 128, 0.18);
+    border-color: rgba(255, 179, 128, 0.4);
+  }
+
+  .contact-links {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .contact-link {
+    background: transparent;
+    border: 1px solid rgba(255, 179, 128, 0.3);
+    color: #FFB380;
+    padding: 0.6rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    font-weight: 500;
+  }
+
+  .contact-link:hover {
+    background: rgba(255, 179, 128, 0.15);
+    border-color: #FFB380;
+  }
+
   @media (max-width: 768px) {
-    .right-panel {
-      padding: 2rem;
+    .hero {
+      height: 55vh;
+    }
+
+    .content {
+      padding: 2rem 1.5rem 4rem;
     }
 
     header {
-      margin-top: 0;
       margin-bottom: 1.5rem;
+    }
+
+    nav {
+      flex-wrap: wrap;
+      gap: 1rem;
     }
 
     h1 {
       font-size: 2.5rem;
     }
 
+    h2 {
+      font-size: 1.4rem;
+    }
+
     p {
       font-size: 1rem;
+    }
+
+    .project-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .contact-links {
+      flex-wrap: wrap;
     }
   }
 </style>
