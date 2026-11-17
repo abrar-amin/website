@@ -87,11 +87,23 @@
       {#each ticks as tick}<span style="left: {tick.left}%">{tick.text}</span>{/each}
     </div>
   </div>
+  <figcaption>Earth crossing the Sun, as seen from Neptune. The line is the Sun's brightness, dipping while Earth is in front of it.</figcaption>
 </figure>
 
 <style>
   figure {
     margin: 0;
+    width: fit-content;
+  }
+
+  /* Wraps to the plot's width instead of widening the figure */
+  figcaption {
+    width: 0;
+    min-width: 100%;
+    margin-top: 1em;
+    color: #6b6b6b;
+    line-height: 1.5;
+    text-align: left;
   }
 
   .plot {
